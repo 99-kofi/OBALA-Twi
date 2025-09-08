@@ -1,3 +1,4 @@
+
 # obala_twi_app.py
 # Streamlit-based OBALA TWI chat with Gemini and Text-to-Speech output (Twi Error Messages)
 # NOTE: This file contains a HARDCODED API KEY PLACEHOLDER for demo purposes.
@@ -12,7 +13,7 @@ import logging
 
 # --- Configuration ---
 GEMINI_API_KEY = "AIzaSyDpAmrLDJjDTKi7TD-IS3vqQlBAYVrUbv4" # <-- IMPORTANT: REPLACE THIS
-MODEL_NAME = "OBALA-T5"
+MODEL_NAME = "gemini-2.0-flash"
 TTS_MODEL = "Ghana-NLP/Southern-Ghana-TTS-Public"
 
 # Configure logging to show technical errors in the console (for the developer)
@@ -31,7 +32,8 @@ TWI_ERRORS = {
 
 st.set_page_config(page_title="OBALA TWI", page_icon="🇬🇭", layout="centered")
 st.title("🇬🇭 OBALA TWI — Akan Twi AI Assistant")
-st.caption(f"Powered by {MODEL_NAME} & {TTS_MODEL}")
+#st.caption(f"Powered by {MODEL_NAME} & {TTS_MODEL}")
+st.caption("From WAIT ❤")
 
 # --- Helper Functions ---
 @st.cache_resource
