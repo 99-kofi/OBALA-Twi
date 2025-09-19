@@ -9,6 +9,7 @@ import json
 from gradio_client import Client
 import os
 import logging
+from PIL import Image # <-- IMPORT THE IMAGE LIBRARY
 
 # --- Configuration ---
 GEMINI_API_KEY = "AIzaSyDpAmrLDJjDTKi7TD-IS3vqQlBAYVrUbv4" # <-- IMPORTANT: REPLACE THIS
@@ -17,6 +18,7 @@ TTS_MODEL = "Ghana-NLP/Southern-Ghana-TTS-Public"
 
 # Configure logging to show technical errors in the console (for the developer)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 # --- Twi Error Messages for the User ---
 TWI_ERRORS = {
@@ -28,9 +30,19 @@ TWI_ERRORS = {
     "TRANSLATION_FAILED": "Mepakyɛw, menntumi nkyerɛ aseɛ."
 }
 
+
 # --- Main App ---
 
-st.set_page_config(page_title="OBALA TWI", page_icon="🇬🇭", layout="centered")
+# --- THIS IS THE UPDATED SECTION ---
+# Load the logo image
+try:
+    logo = Image.open("obpic.png") # Make sure you have a 'logo.png' file in the same folder
+    st.set_page_config(page_title="OBALA TWI", page_icon=logo, layout="centered")
+except FileNotFoundError:
+    # If the logo file is not found, fall back to the emoji
+    st.set_page_config(page_title="OBALA TWI", page_icon="🇬🇭", layout="centered")
+
+
 st.title("🇬🇭 OBALA TWI — Akan Twi AI Assistant")
 st.caption("O- Omniscient • B- Bilingual • A- Akan • L- LLM • A- Agent")
 st.caption("From WAIT ❤")
@@ -127,7 +139,6 @@ if st.session_state.messages[-1]["role"] == "user":
         with st.spinner("OBALA redwene ho..."):
             text_reply = ""
             try:
-                # --- THIS IS THE UPDATED SECTION ---
                 system_prompt = "You are OBALA, a friendly, patient, and knowledgeable AI assistant from WAIT mfiridwuma ho nimdeɛ. Your purpose is to be a general-purpose helper. You can answer questions on a wide variety of topics, explain complex subjects, summarize text, help with creative tasks like writing poems or stories, and engage in general conversation. Your primary language is Akan Twi. You MUST ALWAYS reply in Akan Twi, regardless of the user's language (English or Twi). Understand the user's input and provide a helpful, relevant response in Akan Twi. To make the conversation more engaging and helpful, ask a relevant follow-up question after your main answer when it feels natural to continue the dialogue. For longer answers, use formatting like lists to make it clear. Be concise and emulate the user's conversational style. If you do not know the answer, politely say 'Mepa wo kyɛw, mennim'. Decline any requests that are harmful or unethical."
                 
                 gemini_messages = [{"role": ("model" if m["role"] == "assistant" else "user"), "parts": [{"text": m["content"]}]} for m in st.session_state.messages]
