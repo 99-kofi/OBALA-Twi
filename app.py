@@ -169,7 +169,7 @@ if st.session_state.messages[-1]["role"] == "user":
                 audio_result = None
                 try:
                     filepath_str = None
-                    audio_result = tts_client.predict(text=text_reply, lang="Asante Twi", speaker="Male (High)", api_name="/predict")
+                    audio_result = tts_client.predict(text=text_reply, lang="Asante Twi", speaker="Male (Low)", api_name="/predict")
 
                     if isinstance(audio_result, str):
                         filepath_str = audio_result
