@@ -6,15 +6,18 @@
 import streamlit as st
 import requests
 import json
-from gradio_client import Client
+from gradio_client import Client, handle_file
 import os
 import logging
 from PIL import Image
+import tempfile
+from streamlit_mic_recorder import mic_recorder
 
 # --- Configuration ---
 GEMINI_API_KEY = "AIzaSyDpAmrLDJjDTKi7TD-IS3vqQlBAYVrUbv4" # <-- IMPORTANT: REPLACE THIS
 MODEL_NAME = "gemini-2.0-flash"
 TTS_MODEL = "Ghana-NLP/Southern-Ghana-TTS-Public"
+STT_MODEL = "DarliAI/Evaluation" # <-- Re-adding the specialized Twi STT model
 
 # Configure logging to show technical errors in the console (for the developer)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -23,6 +26,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # --- Twi Error Messages for the User ---
 TWI_ERRORS = {
     "TTS_CONNECTION_FAILED": "Mepakyɛw, me nsa nka kasa adwinnadeɛ no mprempren. Bɔ mmɔden bio akyire yi.",
+    "STT_CONNECTION_FAILED": "Mepakyɛw, adwinnadeɛ a ɛsesɛ nne mu no nnyɛ adwuma seesei.",
+    "TRANSCRIPTION_FAILED": "Mepakyɛw, mantumi ante deɛ wokaeɛ no yie. Bɔ mmɔden bio.",
     "GEMINI_API_FAILED": "Mepakyɛw, m'atwerɛ adwinnadeɛ no anyɛ adwuma yie. Bɔ mmɔden bio.",
     "AUDIO_GENERATION_FAILED": "Mepakyɛw, asɛm ato me wɔ ɛnne no a mɛpagya mu. Mantumi anyɛ no yie.",
     "INVALID_AUDIO_PATH": "Kasa adwinnadeɛ no de biribi a ɛnsɛ amena me. Mantumi annye ɛnne no.",
@@ -66,12 +71,22 @@ st.markdown("""
 # --- Helper Functions ---
 @st.cache_resource
 def init_tts_client():
-    """Initializes the Gradio client, with Twi error handling."""
+    """Initializes the Gradio client for Text-to-Speech."""
     try:
         return Client(TTS_MODEL)
     except Exception as e:
         logging.error(f"Could not connect to the Text-to-Speech model: {e}")
         st.error(TWI_ERRORS["TTS_CONNECTION_FAILED"])
+        return None
+
+@st.cache_resource
+def init_stt_client():
+    """Initializes the Gradio client for Speech-to-Text."""
+    try:
+        return Client(STT_MODEL)
+    except Exception as e:
+        logging.error(f"STT client (DarliAI) connection failed: {e}")
+        st.error(TWI_ERRORS["STT_CONNECTION_FAILED"])
         return None
 
 def translate_text(text_to_translate, target_language="English"):
@@ -93,13 +108,14 @@ def translate_text(text_to_translate, target_language="English"):
         return TWI_ERRORS["TRANSLATION_FAILED"]
 
 # --- Main Application Logic ---
-# No longer encapsulated in a function, as it's the default view now.
 st.title("🇬🇭 OBALA TWI — Akan Twi AI Assistant")
 st.caption("O- Omniscient • B- Bilingual • A- Akan • L- LLM • A- Agent")
 st.caption("From WAIT ❤")
 st.info("You can type your prompts in either Twi or English.")
 
 tts_client = init_tts_client()
+stt_client = init_stt_client() # Initialize the STT client
+
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Afehyia pa! Me din de OBALA. Mɛtumi aboa wo sɛn?"}
@@ -133,13 +149,46 @@ for i, msg in enumerate(st.session_state.messages):
                     st.info(st.session_state[translation_cache_key])
 
 
-# --- Handle New User Input ---
-if prompt := st.chat_input("Kyerɛw wo asɛm wɔ Twi mu..."):
+# --- VOICE AND TEXT INPUT SECTION ---
+audio_info = mic_recorder(start_prompt="🎤 Kasa (Speak)", stop_prompt="⏹️ Gyae (Stop)", just_once=True, key='recorder')
+prompt = st.chat_input("Kyerɛw wo asɛm wɔ Twi mu...")
+
+# Handle voice input
+if audio_info and audio_info['bytes']:
+    audio_bytes = audio_info['bytes']
+    with st.spinner("Meresesɛ wo nne mu... (Transcribing...)"):
+        transcribed_text = ""
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp_audio_file:
+                tmp_audio_file.write(audio_bytes)
+                tmp_audio_filepath = tmp_audio_file.name
+
+            if stt_client:
+                result = stt_client.predict(
+                    audio_path=handle_file(tmp_audio_filepath),
+                    language="Akan (Asante Twi)",
+                    api_name="/_transcribe_and_store"
+                )
+                transcribed_text = result if isinstance(result, str) else str(result)
+
+            os.remove(tmp_audio_filepath)
+
+        except Exception as e:
+            logging.error(f"An unexpected transcription error occurred: {e}")
+            st.error(TWI_ERRORS["TRANSCRIPTION_FAILED"])
+
+        if transcribed_text and transcribed_text.strip():
+            st.session_state.messages.append({"role": "user", "content": transcribed_text})
+            st.rerun()
+
+# Handle text input
+if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.rerun()
 
+
 # --- Generate and Display AI Response (if last message was from user) ---
-if st.session_state.messages[-1]["role"] == "user":
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     with st.chat_message("assistant"):
         with st.spinner("OBALA redwene ho..."):
             text_reply = ""
