@@ -108,7 +108,7 @@ def translate_text(text_to_translate, target_language="English"):
         return TWI_ERRORS["TRANSLATION_FAILED"]
 
 # --- Main Application Logic ---
-st.title("🇬🇭 OBALA TWI — Akan Twi AI Assistant")
+st.title("🇬🇭 OBALA  — Your AI Assistant that speak and hears your language")
 st.caption("O- Omniscient • B- Bilingual • A- Akan • L- LLM • A- Agent")
 st.caption("From WAIT ❤")
 st.info("You can type your prompts in either Twi or English.")
