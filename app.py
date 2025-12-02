@@ -17,7 +17,7 @@ from streamlit_mic_recorder import mic_recorder
 GEMINI_API_KEY = "AIzaSyBrUHY2murE_h6JS_QPnnEEOPCCna3ZIPk" # <-- IMPORTANT: REPLACE THIS
 MODEL_NAME = "gemini-2.0-flash"
 TTS_MODEL = "Ghana-NLP/Southern-Ghana-TTS-Public"
-STT_MODEL = "DarliAI/Evaluation" # <-- Re-adding the specialized Twi STT model
+STT_MODEL = "KhayaAI/Southern-Ghana-ASR-UI" # <-- Using the specialized KhayaAI Twi STT model
 
 # Configure logging to show technical errors in the console (for the developer)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -85,7 +85,7 @@ def init_stt_client():
     try:
         return Client(STT_MODEL)
     except Exception as e:
-        logging.error(f"STT client (DarliAI) connection failed: {e}")
+        logging.error(f"STT client (KhayaAI) connection failed: {e}")
         st.error(TWI_ERRORS["STT_CONNECTION_FAILED"])
         return None
 
@@ -164,10 +164,11 @@ if audio_info and audio_info['bytes']:
                 tmp_audio_filepath = tmp_audio_file.name
 
             if stt_client:
+                # --- THIS IS THE UPDATED SECTION ---
                 result = stt_client.predict(
-                    audio_path=handle_file(tmp_audio_filepath),
-                    language="Akan (Asante Twi)",
-                    api_name="/_transcribe_and_store"
+                    audio=handle_file(tmp_audio_filepath),
+                    LANG="Asante Twi",
+                    api_name="/predict"
                 )
                 transcribed_text = result if isinstance(result, str) else str(result)
 
