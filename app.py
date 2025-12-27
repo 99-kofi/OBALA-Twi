@@ -1,5 +1,6 @@
 # obala_twi_app.py
-# Streamlit-based OBALA TWI chat with Gemini and Text-to-Speech output (Twi Error Messages)
+# Streamlit-based OBALA TWI chat with Gemini + STT + TTS
+# FIXED: conversation cutoffs, memory overflow, truncation
 
 import streamlit as st
 import requests
@@ -10,246 +11,215 @@ import logging
 from PIL import Image
 import tempfile
 from streamlit_mic_recorder import mic_recorder
-from dotenv import load_dotenv # <-- 1. IMPORT DOTENV
+from dotenv import load_dotenv
 
-# --- 2. LOAD ENVIRONMENT VARIABLES AT THE VERY TOP ---
+# ---------------- ENV ----------------
 load_dotenv()
-
-# --- Configuration ---
-# --- 3. FETCH THE API KEY FROM THE ENVIRONMENT ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-MODEL_NAME = "gemini-3-flash-preview" # Corrected from gemini-3
+MODEL_NAME = "gemini-1.5-flash-preview"
 TTS_MODEL = "Ghana-NLP/Southern-Ghana-TTS-Public"
 STT_MODEL = "KhayaAI/Southern-Ghana-ASR-UI"
 
-# --- 4. ADD A CHECK TO ENSURE THE KEY IS LOADED ---
 if not GEMINI_API_KEY:
-    st.error("GEMINI_API_KEY not found. Please create a .env file and add your API key.")
-    st.stop() # Stop the app if the key is missing
+    st.error("GEMINI_API_KEY not found in .env")
+    st.stop()
 
-# Configure logging to show technical errors in the console (for the developer)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 
-
-# --- Twi Error Messages for the User ---
+# ---------------- TWI ERRORS ----------------
 TWI_ERRORS = {
-    "TTS_CONNECTION_FAILED": "Mepakyɛw, me nsa nka kasa adwinnadeɛ no mprempren. Bɔ mmɔden bio akyire yi.",
-    "STT_CONNECTION_FAILED": "Mepakyɛw, adwinnadeɛ a ɛsesɛ nne mu no nnyɛ adwuma seesei.",
-    "TRANSCRIPTION_FAILED": "Mepakyɛw, mantumi ante deɛ wokaeɛ no yie. Bɔ mmɔden bio.",
-    "GEMINI_API_FAILED": "Mepakyɛw, m'atwerɛ adwinnadeɛ no anyɛ adwuma yie. Bɔ mmɔden bio.",
-    "AUDIO_GENERATION_FAILED": "Mepakyɛw, asɛm ato me wɔ ɛnne no a mɛpagya mu. Mantumi anyɛ no yie.",
-    "INVALID_AUDIO_PATH": "Kasa adwinnadeɛ no de biribi a ɛnsɛ amena me. Mantumi annye ɛnne no.",
-    "AUDIO_PATH_NOT_FOUND": "Me nsa kaa kwan no deɛ, nanso ɛnne no nni hɔ. Mepakyɛw.",
-    "TRANSLATION_FAILED": "Mepakyɛw, menntumi nkyerɛ aseɛ."
+    "GEMINI_API_FAILED": "Mepakyɛw, m'atwerɛ adwinnadeɛ no anyɛ adwuma yie.",
+    "TRANSCRIPTION_FAILED": "Mepakyɛw, mantumi ante deɛ wokaeɛ no yie.",
+    "AUDIO_GENERATION_FAILED": "Mepakyɛw, mantumi anyɛ nne adwumadiɛ no yie."
 }
 
-
-# --- Main App ---
-
-# Load the logo image
+# ---------------- PAGE CONFIG ----------------
 try:
-    logo = Image.open("obpic.png") # Make sure you have a 'obpic.png' file in the same folder
-    st.set_page_config(page_title="OBALA TWI", page_icon=logo, layout="centered")
-except FileNotFoundError:
-    # If the logo file is not found, fall back to the emoji
-    st.set_page_config(page_title="OBALA TWI", page_icon="🇬🇭", layout="centered")
+    logo = Image.open("obpic.png")
+    st.set_page_config(page_title="OBALA TWI", page_icon=logo)
+except:
+    st.set_page_config(page_title="OBALA TWI", page_icon="🇬🇭")
 
-
-# --- CUSTOM CSS FOR SMALLER BUTTONS ---
+# ---------------- STYLES ----------------
 st.markdown("""
 <style>
-    /* Target the button specifically within Streamlit's structure */
-    .stButton>button {
-        padding: 0.25rem 0.75rem;
-        font-size: 0.85rem;
-        line-height: 1.5;
-        border-radius: 0.5rem;
-        min-height: 1rem;
-    }
-    .centered-text {
-        text-align: center;
-        font-size: 1.2rem;
-        margin-top: 20px;
-        margin-bottom: 30px;
-    }
+.stButton>button {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.85rem;
+}
 </style>
 """, unsafe_allow_html=True)
 
-
-# --- Helper Functions ---
+# ---------------- CLIENTS ----------------
 @st.cache_resource
 def init_tts_client():
-    """Initializes the Gradio client for Text-to-Speech."""
-    try:
-        return Client(TTS_MODEL)
-    except Exception as e:
-        logging.error(f"Could not connect to the Text-to-Speech model: {e}")
-        st.error(TWI_ERRORS["TTS_CONNECTION_FAILED"])
-        return None
+    return Client(TTS_MODEL)
 
 @st.cache_resource
 def init_stt_client():
-    """Initializes the Gradio client for Speech-to-Text."""
-    try:
-        return Client(STT_MODEL)
-    except Exception as e:
-        logging.error(f"STT client (KhayaAI) connection failed: {e}")
-        st.error(TWI_ERRORS["STT_CONNECTION_FAILED"])
-        return None
-
-def translate_text(text_to_translate, target_language="English"):
-    """Translates text using the Gemini API."""
-    try:
-        prompt = f"Translate the following Akan Twi text to {target_language}. Do not add any preamble, just the translation: '{text_to_translate}'"
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 8192}
-        }
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
-        res = requests.post(api_url, headers={"Content-Type": "application/json"}, data=json.dumps(payload))
-        res.raise_for_status()
-        data = res.json()
-        translated_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", TWI_ERRORS["TRANSLATION_FAILED"])
-        return translated_text.strip()
-    except Exception as e:
-        logging.error(f"Translation API call failed: {e}")
-        return TWI_ERRORS["TRANSLATION_FAILED"]
-
-# --- Main Application Logic ---
-st.title("🇬🇭 OBALA  — Your AI Assistant that speak and hears your language")
-st.caption("O- Omniscient • B- Bilingual • A- Akan • L- LLM • A- Agent")
-st.caption("From WAIT ❤")
-st.info("You can type your prompts in either Twi or English.")
+    return Client(STT_MODEL)
 
 tts_client = init_tts_client()
-stt_client = init_stt_client() # Initialize the STT client
+stt_client = init_stt_client()
 
+# ---------------- MEMORY UTILS ----------------
+MAX_TURNS = 8
+RECENT_TURNS = 6
+
+def summarize_history(messages):
+    convo = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+    prompt = f"""
+Bɔ nsɛnhyɛsoɔ tiawa wɔ Akan Twi mu fa kasa yi ho.
+Fa nsɛnhyɛsoɔ titiriw nko ara, mmɔ mmɔden mmɔ akomam.
+Kasa:
+{convo}
+"""
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 200}
+    }
+
+    res = requests.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}",
+        headers={"Content-Type": "application/json"},
+        data=json.dumps(payload)
+    )
+    data = res.json()
+    return data["candidates"][0]["content"]["parts"][0]["text"]
+
+# ---------------- SESSION STATE ----------------
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Afehyia pa! Me din de OBALA. Mɛtumi aboa wo sɛn?"}
     ]
 
-# --- Display Chat History ---
-for i, msg in enumerate(st.session_state.messages):
+# ---------------- UI HEADER ----------------
+st.title("🇬🇭 OBALA")
+st.caption("Your Akan (Twi) AI Assistant")
+st.info("Kyerɛw anaa kasa — Twi anaa Borɔfo.")
+
+# ---------------- DISPLAY CHAT ----------------
+for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if "audio" in msg and msg["audio"]:
-            if isinstance(msg["audio"], str) and os.path.isfile(msg["audio"]):
-                st.audio(msg["audio"])
+        if msg.get("audio") and os.path.isfile(msg["audio"]):
+            st.audio(msg["audio"])
 
-        # --- Translation Toggle Logic (for assistant messages only) ---
-        if msg["role"] == "assistant" and msg["content"] not in TWI_ERRORS.values():
-            visibility_key = f"translation_visible_{i}"
-            if visibility_key not in st.session_state:
-                st.session_state[visibility_key] = False
+# ---------------- INPUT ----------------
+audio_info = mic_recorder("🎤 Kasa", "⏹️ Gyae", just_once=True)
+text_prompt = st.chat_input("Kyerɛw wo asɛm...")
 
-            button_text = "Hide Translation" if st.session_state[visibility_key] else "See Translation"
+# ---------------- STT ----------------
+if audio_info and audio_info["bytes"]:
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
+            f.write(audio_info["bytes"])
+            path = f.name
 
-            if st.button(button_text, key=f"translate_btn_{i}"):
-                st.session_state[visibility_key] = not st.session_state[visibility_key]
-                st.rerun()
+        result = stt_client.predict(
+            audio=handle_file(path),
+            LANG="Asante Twi",
+            api_name="/predict"
+        )
+        os.remove(path)
 
-            if st.session_state[visibility_key]:
-                with st.spinner("Translating..."):
-                    translation_cache_key = f"translation_text_{i}"
-                    if translation_cache_key not in st.session_state:
-                        st.session_state[translation_cache_key] = translate_text(msg["content"])
-                    st.info(st.session_state[translation_cache_key])
-
-
-# --- VOICE AND TEXT INPUT SECTION ---
-audio_info = mic_recorder(start_prompt="🎤 Kasa (Speak)", stop_prompt="⏹️ Gyae (Stop)", just_once=True, key='recorder')
-prompt = st.chat_input("Kyerɛw wo asɛm wɔ Twi mu...")
-
-# Handle voice input
-if audio_info and audio_info['bytes']:
-    audio_bytes = audio_info['bytes']
-    with st.spinner("Meresesɛ wo nne mu... (Transcribing...)"):
-        transcribed_text = ""
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp_audio_file:
-                tmp_audio_file.write(audio_bytes)
-                tmp_audio_filepath = tmp_audio_file.name
-
-            if stt_client:
-                result = stt_client.predict(
-                    audio=handle_file(tmp_audio_filepath),
-                    LANG="Asante Twi",
-                    api_name="/predict"
-                )
-                transcribed_text = result if isinstance(result, str) else str(result)
-
-            os.remove(tmp_audio_filepath)
-
-        except Exception as e:
-            logging.error(f"An unexpected transcription error occurred: {e}")
-            st.error(TWI_ERRORS["TRANSCRIPTION_FAILED"])
-
-        if transcribed_text and transcribed_text.strip():
-            st.session_state.messages.append({"role": "user", "content": transcribed_text})
+        if result.strip():
+            st.session_state.messages.append(
+                {"role": "user", "content": result.strip()}
+            )
             st.rerun()
 
-# Handle text input
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    except Exception:
+        st.error(TWI_ERRORS["TRANSCRIPTION_FAILED"])
+
+# ---------------- TEXT INPUT ----------------
+if text_prompt:
+    st.session_state.messages.append(
+        {"role": "user", "content": text_prompt}
+    )
     st.rerun()
 
+# ---------------- AI RESPONSE ----------------
+if st.session_state.messages[-1]["role"] == "user":
 
-# --- Generate and Display AI Response (if last message was from user) ---
-if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+    # Summarize if history too long
+    if len(st.session_state.messages) > MAX_TURNS:
+        summary = summarize_history(st.session_state.messages[:-4])
+        st.session_state.messages = (
+            [{"role": "assistant", "content": f"Nsɛnhyɛsoɔ: {summary}"}]
+            + st.session_state.messages[-4:]
+        )
+
     with st.chat_message("assistant"):
         with st.spinner("OBALA redwene ho..."):
-            text_reply = ""
+
+            system_prompt = """
+Wo ne OBALA wɔ WAIT Technologies.
+Wo kasa titiriw ne Akan Twi.
+Bua bere nyinaa wɔ Akan Twi mu.
+Sɛ w’asɛm tenten dodo a, wie no yie na twetwew twetwew, na twɛn “toa so”.
+Ntwetwe nsɛm mfinimfini.
+Sɛ wunnim a, ka “Mepa wo kyɛw, mennim”.
+"""
+
+            recent = st.session_state.messages[-RECENT_TURNS:]
+
+            contents = [
+                {
+                    "role": "model" if m["role"] == "assistant" else "user",
+                    "parts": [{"text": m["content"]}]
+                }
+                for m in recent
+            ]
+
+            payload = {
+                "contents": contents,
+                "system_instruction": {"parts": [{"text": system_prompt}]},
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "maxOutputTokens": 900
+                }
+            }
+
             try:
-                system_prompt = "You are OBALA, a friendly, patient, and knowledgeable AI assistant from WAIT mfiridwuma ho nimdeɛ. Your purpose is to be a general-purpose helper. You can answer questions on a wide variety of topics, explain complex subjects, summarize text, help with creative tasks like writing poems or stories, and engage in general conversation. Your primary language is Akan Twi. You MUST ALWAYS reply in Akan Twi, regardless of the user's language (English or Twi). Understand the user's input and provide a helpful, relevant response in Akan Twi. To make the conversation more engaging and helpful, ask a relevant follow-up question after your main answer when it feels natural to continue the dialogue. For longer answers, use formatting like lists to make it clear. Be concise and emulate the user's conversational style. If you do not know the answer, politely say 'Mepa wo kyɛw, mennim'. Decline any requests that are harmful or unethical."
-                
-                gemini_messages = [{"role": ("model" if m["role"] == "assistant" else "user"), "parts": [{"text": m["content"]}]} for m in st.session_state.messages]
-
-                payload = {"contents": gemini_messages, "system_instruction": {"parts": [{"text": system_prompt}]}, "generationConfig": {"temperature": 0.4, "maxOutputTokens": 400}}
-                api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
-                res = requests.post(api_url, headers={"Content-Type": "application/json"}, data=json.dumps(payload))
-                res.raise_for_status()
+                res = requests.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}",
+                    headers={"Content-Type": "application/json"},
+                    data=json.dumps(payload)
+                )
                 data = res.json()
-                text_reply = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", TWI_ERRORS["GEMINI_API_FAILED"])
-            except Exception as e:
-                logging.error(f"Gemini API call failed: {e}")
+
+                parts = data.get("candidates", [{}])[0] \
+                            .get("content", {}) \
+                            .get("parts", [])
+
+                text_reply = "".join(p.get("text", "") for p in parts).strip()
+
+                if not text_reply:
+                    text_reply = TWI_ERRORS["GEMINI_API_FAILED"]
+
+            except Exception:
                 text_reply = TWI_ERRORS["GEMINI_API_FAILED"]
-                st.error(text_reply)
 
-        if text_reply and text_reply != TWI_ERRORS["GEMINI_API_FAILED"]:
-             st.markdown(text_reply)
+            st.markdown(text_reply)
 
-        # 2. Generate audio for the new response
-        audio_path_to_store = None
-        if text_reply and tts_client and text_reply != TWI_ERRORS["GEMINI_API_FAILED"]:
-            with st.spinner("OBALA rekasa..."):
-                audio_result = None
-                try:
-                    filepath_str = None
-                    audio_result = tts_client.predict(text=text_reply, lang="Asante Twi", speaker="Male (Low)", api_name="/predict")
+        # ---------------- TTS ----------------
+        audio_path = None
+        try:
+            audio_result = tts_client.predict(
+                text=text_reply,
+                lang="Asante Twi",
+                speaker="Male (Low)",
+                api_name="/predict"
+            )
+            if isinstance(audio_result, str) and os.path.isfile(audio_result):
+                st.audio(audio_result)
+                audio_path = audio_result
+        except Exception:
+            st.warning(TWI_ERRORS["AUDIO_GENERATION_FAILED"])
 
-                    if isinstance(audio_result, str):
-                        filepath_str = audio_result
-                    elif isinstance(audio_result, dict) and 'name' in audio_result and isinstance(audio_result['name'], str):
-                        filepath_str = audio_result['name']
-
-                    if filepath_str:
-                        if os.path.isfile(filepath_str):
-                            st.audio(filepath_str)
-                            audio_path_to_store = filepath_str
-                        else:
-                            logging.warning(f"Audio generation failed: Path is not a valid file -> '{filepath_str}'")
-                            st.warning(TWI_ERRORS["AUDIO_PATH_NOT_FOUND"])
-                    else:
-                        logging.warning(f"Audio generation failed: Could not extract filepath from TTS response. Received: {audio_result}")
-                        st.warning(TWI_ERRORS["INVALID_AUDIO_PATH"])
-
-                except Exception as e:
-                    logging.error(f"An error occurred during audio generation: {e}")
-                    logging.error(f"The raw data from TTS that caused the error was: {audio_result}")
-                    st.error(TWI_ERRORS["AUDIO_GENERATION_FAILED"])
-
-        # 3. Add the complete AI response to history
-        st.session_state.messages.append({"role": "assistant", "content": text_reply, "audio": audio_path_to_store})
+        st.session_state.messages.append(
+            {"role": "assistant", "content": text_reply, "audio": audio_path}
+        )
         st.rerun()
