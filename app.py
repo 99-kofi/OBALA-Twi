@@ -1,7 +1,5 @@
 # obala_twi_app.py
 # Streamlit-based OBALA TWI chat with Gemini and Text-to-Speech output (Twi Error Messages)
-# NOTE: This file contains a HARDCODED API KEY PLACEHOLDER for demo purposes.
-# For production, store the key in an environment variable instead.
 
 import streamlit as st
 import requests
@@ -12,12 +10,23 @@ import logging
 from PIL import Image
 import tempfile
 from streamlit_mic_recorder import mic_recorder
+from dotenv import load_dotenv # <-- 1. IMPORT DOTENV
+
+# --- 2. LOAD ENVIRONMENT VARIABLES AT THE VERY TOP ---
+load_dotenv()
 
 # --- Configuration ---
-GEMINI_API_KEY = "AIzaSyBMh9tJkWhVtq-7NDpquE1mkHvHpHnTGA4" # <-- IMPORTANT: REPLACE THIS
-MODEL_NAME = "gemini-3-flash-preview"
+# --- 3. FETCH THE API KEY FROM THE ENVIRONMENT ---
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+MODEL_NAME = "gemini-1.5-flash-preview" # Corrected from gemini-3
 TTS_MODEL = "Ghana-NLP/Southern-Ghana-TTS-Public"
-STT_MODEL = "KhayaAI/Southern-Ghana-ASR-UI" # <-- Using the specialized KhayaAI Twi STT model
+STT_MODEL = "KhayaAI/Southern-Ghana-ASR-UI"
+
+# --- 4. ADD A CHECK TO ENSURE THE KEY IS LOADED ---
+if not GEMINI_API_KEY:
+    st.error("GEMINI_API_KEY not found. Please create a .env file and add your API key.")
+    st.stop() # Stop the app if the key is missing
 
 # Configure logging to show technical errors in the console (for the developer)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -164,7 +173,6 @@ if audio_info and audio_info['bytes']:
                 tmp_audio_filepath = tmp_audio_file.name
 
             if stt_client:
-                # --- THIS IS THE UPDATED SECTION ---
                 result = stt_client.predict(
                     audio=handle_file(tmp_audio_filepath),
                     LANG="Asante Twi",
