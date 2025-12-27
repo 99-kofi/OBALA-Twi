@@ -104,7 +104,7 @@ def translate_text(text_to_translate, target_language="English"):
         prompt = f"Translate the following Akan Twi text to {target_language}. Do not add any preamble, just the translation: '{text_to_translate}'"
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 400}
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 8192}
         }
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
         res = requests.post(api_url, headers={"Content-Type": "application/json"}, data=json.dumps(payload))
