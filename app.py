@@ -19,7 +19,7 @@ load_dotenv()
 # --- 3. FETCH THE API KEY FROM THE ENVIRONMENT ---
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-MODEL_NAME = "gemini-3-flash-preview" # Corrected from gemini-3
+MODEL_NAME = "gemini-2.0-flash-lite" # Corrected from gemini-3
 TTS_MODEL = "Ghana-NLP/Southern-Ghana-TTS-Public"
 STT_MODEL = "KhayaAI/Southern-Ghana-ASR-UI"
 
