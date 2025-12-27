@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-MODEL_NAME = "gemini-1.5-flash-preview"
+MODEL_NAME = "gemini-3-flash-preview"
 TTS_MODEL = "Ghana-NLP/Southern-Ghana-TTS-Public"
 STT_MODEL = "KhayaAI/Southern-Ghana-ASR-UI"
 
