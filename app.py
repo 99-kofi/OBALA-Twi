@@ -1,7 +1,3 @@
-# obala_twi_app.py
-# Streamlit-based OBALA TWI chat with Gemini + STT + TTS
-# FIXED: conversation cutoffs, memory overflow, truncation
-
 import streamlit as st
 import requests
 import json
@@ -37,28 +33,99 @@ TWI_ERRORS = {
 # ---------------- PAGE CONFIG ----------------
 try:
     logo = Image.open("obpic.png")
-    st.set_page_config(page_title="OBALA TWI", page_icon=logo)
-except:
-    st.set_page_config(page_title="OBALA TWI", page_icon="🇬🇭")
+    st.set_page_config(page_title="OBALA TWI", page_icon=logo, layout="wide")
+except Exception:
+    st.set_page_config(page_title="OBALA TWI", page_icon="🇬🇭", layout="wide")
 
 # ---------------- STYLES ----------------
-st.markdown("""
+st.markdown(
+    """
 <style>
+:root {
+  --bg1: #f4ecff;
+  --bg2: #fdf6ff;
+  --glass: rgba(255, 255, 255, 0.35);
+  --glass-strong: rgba(255, 255, 255, 0.55);
+  --text: #251b3f;
+  --accent: #8e72ff;
+  --accent-2: #ff8cd7;
+}
+
+[data-testid="stAppViewContainer"] {
+  background: radial-gradient(circle at top left, #f1e8ff 0%, #f8f0ff 40%, #fff7fd 100%);
+}
+
+.main .block-container {
+  padding-top: 1.2rem;
+  padding-bottom: 2rem;
+  max-width: 900px;
+}
+
+.hero {
+  border-radius: 28px;
+  padding: 1.5rem;
+  backdrop-filter: blur(14px);
+  background: linear-gradient(140deg, rgba(255,255,255,.58), rgba(255,255,255,.28));
+  border: 1px solid rgba(255,255,255,.55);
+  box-shadow: 0 12px 35px rgba(120, 80, 200, 0.15);
+  margin-bottom: 1rem;
+}
+
+.glass-card {
+  border-radius: 24px;
+  padding: 1rem;
+  backdrop-filter: blur(14px);
+  background: var(--glass);
+  border: 1px solid rgba(255,255,255,.5);
+  box-shadow: 0 10px 28px rgba(140, 100, 190, 0.12);
+}
+
+.orb {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 30px rgba(142, 114, 255, .45);
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1.9rem;
+}
+
+.small-chip {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  margin: 0.2rem 0.25rem 0 0;
+  font-size: 0.78rem;
+  color: #443762;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(255,255,255,.8);
+}
+
 .stButton>button {
-    padding: 0.25rem 0.75rem;
-    font-size: 0.85rem;
+  border-radius: 999px;
+  border: 0;
+  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  color: white;
+  font-weight: 600;
+  padding: 0.35rem 1rem;
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ---------------- CLIENTS ----------------
 @st.cache_resource
 def init_tts_client():
     return Client(TTS_MODEL)
 
+
 @st.cache_resource
 def init_stt_client():
     return Client(STT_MODEL)
+
 
 tts_client = init_tts_client()
 stt_client = init_stt_client()
@@ -94,67 +161,105 @@ if "messages" not in st.session_state:
         {"role": "assistant", "content": "Afehyia pa! Me din de OBALA. Mɛtumi aboa wo sɛn?"}
     ]
 
+if "view_mode" not in st.session_state:
+    st.session_state.view_mode = "💬 Chat"
+
 # ---------------- UI HEADER ----------------
-st.title("🇬🇭 OBALA")
-st.caption("Your Akan (Twi) AI Assistant")
-st.info("Kyerɛw anaa kasa — Twi anaa Borɔfo.")
+st.markdown(
+    """
+<div class="hero">
+  <div style="display:flex; gap:1rem; align-items:center;">
+    <div class="orb">🤖</div>
+    <div>
+      <h2 style="margin:0; color:#291f42;">OBALA AI Sidekick</h2>
+      <p style="margin:.35rem 0 0 0; color:#4e3f73;">Calm, emotional, and voice-first Twi assistant.</p>
+    </div>
+  </div>
+  <div style="margin-top:.65rem;">
+    <span class="small-chip">Glassmorphism</span>
+    <span class="small-chip">Voice-first</span>
+    <span class="small-chip">Productivity + Chat</span>
+    <span class="small-chip">Multimodal AI</span>
+  </div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
-# ---------------- DISPLAY CHAT ----------------
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-        if msg.get("audio") and os.path.isfile(msg["audio"]):
-            st.audio(msg["audio"])
+st.session_state.view_mode = st.segmented_control(
+    "Screen",
+    options=["👋 Welcome", "📊 Dashboard", "💬 Chat"],
+    default=st.session_state.view_mode,
+)
 
-# ---------------- INPUT ----------------
-audio_info = mic_recorder("🎤 Kasa", "⏹️ Gyae", just_once=True)
-text_prompt = st.chat_input("Kyerɛw wo asɛm...")
+if st.session_state.view_mode == "👋 Welcome":
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    st.subheader("Meet OBALA")
+    st.write("A digital companion designed to feel warm, intelligent, and always available.")
+    st.write("Use voice or text to start a gentle Akan Twi conversation.")
+    st.button("🎙️ Start Voice Session")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------------- STT ----------------
-if audio_info and audio_info["bytes"]:
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
-            f.write(audio_info["bytes"])
-            path = f.name
+elif st.session_state.view_mode == "📊 Dashboard":
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    st.subheader("Good day 👋")
+    st.caption("Smart integrations and quick actions")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.info("📆 Calendar\n\nNo meetings in the next 2 hours")
+        st.info("💬 Slack\n\n3 unread mentions need responses")
+    with c2:
+        st.info("🧠 Prompt Idea\n\n'Boa me ma menhyehyɛ me nnawɔtwe adwuma.'")
+        st.info("🎯 Quick Action\n\nCreate Twi summary from today notes")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-        result = stt_client.predict(
-            audio=handle_file(path),
-            LANG="Asante Twi",
-            api_name="/predict"
-        )
-        os.remove(path)
+else:
+    st.caption("Kyerɛw anaa kasa — Twi anaa Borɔfo.")
 
-        if result.strip():
-            st.session_state.messages.append(
-                {"role": "user", "content": result.strip()}
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if msg.get("audio") and os.path.isfile(msg["audio"]):
+                st.audio(msg["audio"])
+
+    audio_info = mic_recorder("🎤 Kasa", "⏹️ Gyae", just_once=True)
+    text_prompt = st.chat_input("Kyerɛw wo asɛm...")
+
+    if audio_info and audio_info["bytes"]:
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
+                f.write(audio_info["bytes"])
+                path = f.name
+
+            result = stt_client.predict(
+                audio=handle_file(path),
+                LANG="Asante Twi",
+                api_name="/predict"
             )
-            st.rerun()
+            os.remove(path)
 
-    except Exception:
-        st.error(TWI_ERRORS["TRANSCRIPTION_FAILED"])
+            if result.strip():
+                st.session_state.messages.append({"role": "user", "content": result.strip()})
+                st.rerun()
 
-# ---------------- TEXT INPUT ----------------
-if text_prompt:
-    st.session_state.messages.append(
-        {"role": "user", "content": text_prompt}
-    )
-    st.rerun()
+        except Exception:
+            st.error(TWI_ERRORS["TRANSCRIPTION_FAILED"])
 
-# ---------------- AI RESPONSE ----------------
-if st.session_state.messages[-1]["role"] == "user":
+    if text_prompt:
+        st.session_state.messages.append({"role": "user", "content": text_prompt})
+        st.rerun()
 
-    # Summarize if history too long
-    if len(st.session_state.messages) > MAX_TURNS:
-        summary = summarize_history(st.session_state.messages[:-4])
-        st.session_state.messages = (
-            [{"role": "assistant", "content": f"Nsɛnhyɛsoɔ: {summary}"}]
-            + st.session_state.messages[-4:]
-        )
+    if st.session_state.messages[-1]["role"] == "user":
+        if len(st.session_state.messages) > MAX_TURNS:
+            summary = summarize_history(st.session_state.messages[:-4])
+            st.session_state.messages = (
+                [{"role": "assistant", "content": f"Nsɛnhyɛsoɔ: {summary}"}]
+                + st.session_state.messages[-4:]
+            )
 
-    with st.chat_message("assistant"):
-        with st.spinner("OBALA redwene ho..."):
-
-            system_prompt = """
+        with st.chat_message("assistant"):
+            with st.spinner("OBALA redwene ho..."):
+                system_prompt = """
 Wo ne OBALA wɔ WAIT Technologies.
 Wo kasa titiriw ne Akan Twi.
 Bua bere nyinaa wɔ Akan Twi mu.
@@ -163,63 +268,59 @@ Ntwetwe nsɛm mfinimfini.
 Sɛ wunnim a, ka “Mepa wo kyɛw, mennim”.
 """
 
-            recent = st.session_state.messages[-RECENT_TURNS:]
+                recent = st.session_state.messages[-RECENT_TURNS:]
 
-            contents = [
-                {
-                    "role": "model" if m["role"] == "assistant" else "user",
-                    "parts": [{"text": m["content"]}]
+                contents = [
+                    {
+                        "role": "model" if m["role"] == "assistant" else "user",
+                        "parts": [{"text": m["content"]}]
+                    }
+                    for m in recent
+                ]
+
+                payload = {
+                    "contents": contents,
+                    "system_instruction": {"parts": [{"text": system_prompt}]},
+                    "generationConfig": {
+                        "temperature": 0.4,
+                        "maxOutputTokens": 900
+                    }
                 }
-                for m in recent
-            ]
 
-            payload = {
-                "contents": contents,
-                "system_instruction": {"parts": [{"text": system_prompt}]},
-                "generationConfig": {
-                    "temperature": 0.4,
-                    "maxOutputTokens": 900
-                }
-            }
+                try:
+                    res = requests.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}",
+                        headers={"Content-Type": "application/json"},
+                        data=json.dumps(payload)
+                    )
+                    data = res.json()
 
-            try:
-                res = requests.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}",
-                    headers={"Content-Type": "application/json"},
-                    data=json.dumps(payload)
-                )
-                data = res.json()
+                    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                    text_reply = "".join(p.get("text", "") for p in parts).strip()
 
-                parts = data.get("candidates", [{}])[0] \
-                            .get("content", {}) \
-                            .get("parts", [])
+                    if not text_reply:
+                        text_reply = TWI_ERRORS["GEMINI_API_FAILED"]
 
-                text_reply = "".join(p.get("text", "") for p in parts).strip()
-
-                if not text_reply:
+                except Exception:
                     text_reply = TWI_ERRORS["GEMINI_API_FAILED"]
 
+                st.markdown(text_reply)
+
+            audio_path = None
+            try:
+                audio_result = tts_client.predict(
+                    text=text_reply,
+                    lang="Asante Twi",
+                    speaker="Male (Low)",
+                    api_name="/predict"
+                )
+                if isinstance(audio_result, str) and os.path.isfile(audio_result):
+                    st.audio(audio_result)
+                    audio_path = audio_result
             except Exception:
-                text_reply = TWI_ERRORS["GEMINI_API_FAILED"]
+                st.warning(TWI_ERRORS["AUDIO_GENERATION_FAILED"])
 
-            st.markdown(text_reply)
-
-        # ---------------- TTS ----------------
-        audio_path = None
-        try:
-            audio_result = tts_client.predict(
-                text=text_reply,
-                lang="Asante Twi",
-                speaker="Male (Low)",
-                api_name="/predict"
+            st.session_state.messages.append(
+                {"role": "assistant", "content": text_reply, "audio": audio_path}
             )
-            if isinstance(audio_result, str) and os.path.isfile(audio_result):
-                st.audio(audio_result)
-                audio_path = audio_result
-        except Exception:
-            st.warning(TWI_ERRORS["AUDIO_GENERATION_FAILED"])
-
-        st.session_state.messages.append(
-            {"role": "assistant", "content": text_reply, "audio": audio_path}
-        )
-        st.rerun()
+            st.rerun()
