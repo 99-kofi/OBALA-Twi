@@ -26,7 +26,9 @@ If Vercel shows:
 
 `Found app.py but it does not export a top-level "app", "application", or "handler" variable.`
 
-this repository is being auto-detected as a Python serverless app. To avoid that, `vercel.json` now forces a **static-only** build from `public/**` and routes all paths to `public/index.html`.
+this repository is being auto-detected as a Python serverless app. To avoid that, `vercel.json` now forces a static deployment with `outputDirectory: public` and no framework runtime.
+
+Additionally, `.vercelignore` excludes `app.py` and `requirements.txt` from the Vercel upload so runtime auto-detection cannot treat this as a Python serverless app.
 
 ## Quick setup (recommended path with Streamlit Community Cloud)
 

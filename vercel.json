@@ -1,17 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
   "cleanUrls": true,
   "trailingSlash": false,
-  "builds": [
-    {
-      "src": "public/**",
-      "use": "@vercel/static"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/public/index.html"
-    }
-  ]
+  "buildCommand": "echo 'Static deploy'",
+  "outputDirectory": "public"
 }
